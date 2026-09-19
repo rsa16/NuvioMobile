@@ -36,6 +36,9 @@ internal fun DownloadLocationSettingsScreen(
     val changeFolderFailedText = stringResource(Res.string.downloads_location_change_failed)
 
     LaunchedEffect(Unit) {
+        if (!DownloadLocationManager.ensureLocationSet()) {
+            DownloadLocationManager.requestFolderPicker()
+        }
         DownloadLocationState.refresh()
     }
 
