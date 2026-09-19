@@ -164,21 +164,12 @@ internal actual object DownloadLocationManager {
                 treeUri,
                 DocumentsContract.getTreeDocumentId(treeUri),
             )
-        }.getOrNull()
-        val intents = buildList {
-            add(
-                Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(treeUri, DocumentsContract.Document.MIME_TYPE_DIR)
-                },
-            )
-            if (documentUri != null) {
-                add(
-                    Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(documentUri, DocumentsContract.Document.MIME_TYPE_DIR)
-                    },
-                )
-            }
-        }
+        }.getOrNull() ?: return false
+        val intents = listOf(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(documentUri, DocumentsContract.Document.MIME_TYPE_DIR)
+            },
+        )
 
         return startFirstWorkingIntent(context, intents)
     }

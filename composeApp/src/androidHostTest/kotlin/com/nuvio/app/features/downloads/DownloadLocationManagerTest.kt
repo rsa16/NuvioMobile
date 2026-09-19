@@ -163,14 +163,20 @@ class DownloadLocationManagerTest {
     }
 
     @Test
-    fun openDownloadLocationUsesPersistedTreeUri() {
+    fun openDownloadLocationUsesPersistedTreeDocumentUri() {
         val application = initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
 
         assertTrue(DownloadLocationManager.openDownloadLocation())
 
         val started = shadowOf(application).nextStartedActivity
-        assertEquals(SAF_MOVIES_URI, started?.data)
+        assertEquals(
+            DocumentsContract.buildDocumentUriUsingTree(
+                SAF_MOVIES_URI,
+                DocumentsContract.getTreeDocumentId(SAF_MOVIES_URI),
+            ),
+            started?.data,
+        )
     }
 
     @Test
