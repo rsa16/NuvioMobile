@@ -18,6 +18,8 @@ internal actual object DownloadLocationManager {
         return NSFileManager.defaultManager.fileExistsAtPath(path)
     }
 
+    actual suspend fun ensureLocationSelected(): Boolean = ensureLocationSet()
+
     actual fun currentLocationLabel(): String = downloadsDirectoryPath()
 
     actual fun requestFolderPicker(): Boolean = false

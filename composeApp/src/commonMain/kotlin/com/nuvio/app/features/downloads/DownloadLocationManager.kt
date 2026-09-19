@@ -3,6 +3,8 @@ package com.nuvio.app.features.downloads
 internal expect object DownloadLocationManager {
     fun ensureLocationSet(): Boolean
 
+    suspend fun ensureLocationSelected(): Boolean
+
     fun currentLocationLabel(): String
 
     fun requestFolderPicker(): Boolean
