@@ -61,7 +61,7 @@ internal fun DownloadLocationSettingsScreen(
                         icon = Icons.Rounded.Folder,
                         isTablet = false,
                         onClick = {
-                            if (!DownloadsPlatformDownloader.openDownloadsDirectory()) {
+                            if (!DownloadLocationManager.openDownloadLocation()) {
                                 NuvioToastController.show(openFolderFailedText)
                             }
                         },
