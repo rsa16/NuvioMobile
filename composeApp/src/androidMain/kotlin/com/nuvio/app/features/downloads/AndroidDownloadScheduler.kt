@@ -125,6 +125,7 @@ internal class AndroidDownloadScheduler(val context: Context) {
                 if (store.get(fileName) == null) {
                     File(directory, "$fileName.part").delete()
                     DownloadSubtitleStorage(File(directory, fileName).toURI().toString()).remove()
+                    transfer?.item?.localFileUri?.let { DownloadSubtitleStorage(it).remove() }
                 }
             }
         }
@@ -151,7 +152,6 @@ internal class AndroidDownloadScheduler(val context: Context) {
                 .build()
         } else downloadHttpClient
         try {
-            DownloadSubtitles.prepare(transfer.item, destination.toURI().toString())
             currentCoroutineContext().ensureActive()
             if (!isActive(transfer)) return@withLock false
             var lastProgressAt = 0L
@@ -192,6 +192,7 @@ internal class AndroidDownloadScheduler(val context: Context) {
                     errorMessage = null,
                 ))
             }
+            prepareSubtitles(fileName, storedFileUri)
             false
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -204,6 +205,21 @@ internal class AndroidDownloadScheduler(val context: Context) {
             retry
         } finally {
             if (network != null) withContext(NonCancellable + Dispatchers.IO) { client.connectionPool.evictAll() }
+        }
+    }
+
+    private fun prepareSubtitles(fileName: String, localFileUri: String) {
+        cleanupScope.launch {
+            lock(fileName).withLock {
+                val item = store.get(fileName)?.item
+                if (item?.status != DownloadStatus.Completed || item.localFileUri != localFileUri) return@withLock
+                try {
+                    DownloadSubtitles.prepare(item, localFileUri)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 

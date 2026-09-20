@@ -38,6 +38,8 @@ internal actual object DownloadLocationManager {
         DownloadLocationState.refresh()
     }
 
+    internal fun applicationContext(): Context? = appContext
+
     fun bindFolderPicker(launcher: (() -> Unit)?) {
         folderPickerLauncher = launcher
     }
