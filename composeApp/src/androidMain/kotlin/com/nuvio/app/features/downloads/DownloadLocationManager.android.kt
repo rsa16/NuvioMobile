@@ -156,15 +156,16 @@ internal actual object DownloadLocationManager {
             ?.takeIf { it.exists() }
             ?.let { return it.toURI().toString() }
 
-        val baseDirectory = downloadsDirectoryOrNull() ?: return null
         val fileName = destinationFileName.trim().takeIf { it.isNotBlank() }
             ?: localFileUri
                 ?.toLocalFileOrNull()
                 ?.name
                 ?.takeIf { it.isNotBlank() }
             ?: return null
-        val localFile = File(baseDirectory, fileName)
-        return localFile.takeIf { it.exists() }?.toURI()?.toString()
+
+        val localFile = downloadsDirectoryOrNull()?.let { File(it, fileName) }
+        if (localFile?.exists() == true) return localFile.toURI().toString()
+        return findStoredFileInLocation(fileName)
     }
 
     actual fun removeFile(localFileUri: String?): Boolean {
@@ -212,6 +213,15 @@ internal actual object DownloadLocationManager {
 
         source.delete()
         return documentUri.toString()
+    }
+
+    private fun findStoredFileInLocation(fileName: String): String? {
+        val pref = locationPref ?: return null
+        if (pref.mode != DownloadLocationMode.ANDROID_SAF) return null
+        val context = appContext ?: return null
+        val treeUri = runCatching { Uri.parse(pref.value) }.getOrNull() ?: return null
+        if (!hasReadableTreePermission(context, treeUri)) return null
+        return findDocumentByName(context, treeUri, fileName)?.toString()
     }
 
     private fun findDocumentByName(context: Context, treeUri: Uri, displayName: String): Uri? {

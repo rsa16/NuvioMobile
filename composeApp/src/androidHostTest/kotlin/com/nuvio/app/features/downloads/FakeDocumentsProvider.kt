@@ -9,8 +9,17 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 internal class FakeDocumentsProvider : ContentProvider() {
+    @Volatile
+    var failCreateDocument: Boolean = false
+
+    private val createAttempts = AtomicInteger()
+
+    val createDocumentAttempts: Int
+        get() = createAttempts.get()
+
     override fun onCreate(): Boolean = true
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
@@ -19,6 +28,8 @@ internal class FakeDocumentsProvider : ContentProvider() {
             ?: return null
         return when (method) {
             METHOD_CREATE_DOCUMENT -> {
+                createAttempts.incrementAndGet()
+                if (failCreateDocument) return null
                 val displayName = extras?.getString(EXTRA_DISPLAY_NAME) ?: return null
                 val parent = fileFor(documentIdOf(target))
                 check(parent.isDirectory || parent.mkdirs())
