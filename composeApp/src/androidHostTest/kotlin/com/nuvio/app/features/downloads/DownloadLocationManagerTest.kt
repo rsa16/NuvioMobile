@@ -12,7 +12,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
@@ -50,7 +49,7 @@ class DownloadLocationManagerTest {
         assertFalse(DownloadLocationManager.ensureLocationSet())
         val internalLabel = File(context.filesDir, "downloads").absolutePath
         assertEquals(internalLabel, DownloadLocationManager.currentLocationLabel())
-        assertEquals(internalLabel, DownloadLocationState.locationLabel.value)
+        assertEquals(internalLabel, DownloadLocationManager.locationLabel.value)
 
         DownloadLocationManager.initialize(context)
         assertEquals(internalLabel, DownloadLocationManager.currentLocationLabel())
@@ -62,7 +61,7 @@ class DownloadLocationManagerTest {
         val context = initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
         val documentUri = safDocumentUri("primary:Movies/video.mkv")
-        registerDocumentProvider(documentUri).createDocument("primary:Movies/video.mkv")
+        registerFakeDocumentsProvider().createDocument("primary:Movies/video.mkv")
 
         assertEquals(
             documentUri.toString(),
@@ -101,7 +100,7 @@ class DownloadLocationManagerTest {
     fun finalizeDownloadCopiesTempFileIntoSelectedFolderAndDeletesTemp() = runBlocking {
         val context = initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = registerDocumentProvider(SAF_MOVIES_URI)
+        val provider = registerFakeDocumentsProvider(SAF_MOVIES_URI)
         val temp = File(temporary.newFolder(), "video.mkv.part").apply { writeText("video bytes") }
 
         val uri = DownloadLocationManager.finalizeDownload(temp.toURI().toString(), "video.mkv")
@@ -119,7 +118,7 @@ class DownloadLocationManagerTest {
     fun finalizedDocumentUriResolvesForPlayback() = runBlocking {
         initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        registerDocumentProvider(SAF_MOVIES_URI)
+        registerFakeDocumentsProvider(SAF_MOVIES_URI)
         val temp = File(temporary.newFolder(), "video.mkv.part").apply { writeText("video bytes") }
 
         val uri = DownloadLocationManager.finalizeDownload(temp.toURI().toString(), "video.mkv")
@@ -131,7 +130,7 @@ class DownloadLocationManagerTest {
     fun finalizeDownloadReplacesExistingFileInSelectedFolder() = runBlocking {
         val context = initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = registerDocumentProvider(SAF_MOVIES_URI)
+        val provider = registerFakeDocumentsProvider(SAF_MOVIES_URI)
         provider.createDocument("primary:Movies/video.mkv", "old bytes")
         val temp = File(temporary.newFolder(), "video.mkv.part").apply { writeText("new bytes") }
 
@@ -168,7 +167,7 @@ class DownloadLocationManagerTest {
     fun missingLegacyStoredFileResolvesToTheSameNameInTheSelectedFolder() {
         initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = registerDocumentProvider(SAF_MOVIES_URI)
+        val provider = registerFakeDocumentsProvider(SAF_MOVIES_URI)
         provider.createDocument("primary:Movies/migrated.mkv", "video bytes")
         val documentUri = safDocumentUri("primary:Movies/migrated.mkv")
 
@@ -185,7 +184,7 @@ class DownloadLocationManagerTest {
     fun revokedLocationDoesNotResolveStoredFilesByName() {
         val context = initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = registerDocumentProvider(SAF_MOVIES_URI)
+        val provider = registerFakeDocumentsProvider(SAF_MOVIES_URI)
         provider.createDocument("primary:Movies/video.mkv", "video bytes")
         revokePersistedPermission(context, SAF_MOVIES_URI)
 
@@ -211,7 +210,7 @@ class DownloadLocationManagerTest {
     fun removeFileDeletesSafDocument() {
         initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = registerDocumentProvider(SAF_MOVIES_URI)
+        val provider = registerFakeDocumentsProvider(SAF_MOVIES_URI)
         provider.createDocument("primary:Movies/video.mkv")
         val documentUri = safDocumentUri("primary:Movies/video.mkv")
 
@@ -221,20 +220,20 @@ class DownloadLocationManagerTest {
     }
 
     @Test
-    fun ensureLocationSelectedReturnsTrueWhenLocationAlreadySet() = runBlocking {
+    fun ensureLocationSelectedOrPromptReturnsTrueWhenLocationAlreadySet() = runBlocking {
         initializedApplication()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
 
-        assertTrue(DownloadLocationManager.ensureLocationSelected())
+        assertTrue(DownloadLocationManager.ensureLocationSelectedOrPrompt())
     }
 
     @Test
-    fun ensureLocationSelectedContinuesAfterFolderPicked() = runBlocking {
+    fun ensureLocationSelectedOrPromptContinuesAfterFolderPicked() = runBlocking {
         initializedApplication()
         val launched = CompletableDeferred<Unit>()
         DownloadLocationManager.bindFolderPicker { launched.complete(Unit) }
 
-        val selection = async { DownloadLocationManager.ensureLocationSelected() }
+        val selection = async { DownloadLocationManager.ensureLocationSelectedOrPrompt() }
         launched.await()
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
 
@@ -243,12 +242,12 @@ class DownloadLocationManagerTest {
     }
 
     @Test
-    fun ensureLocationSelectedAbortsWhenPickerIsCancelled() = runBlocking {
+    fun ensureLocationSelectedOrPromptAbortsWhenPickerIsCancelled() = runBlocking {
         initializedApplication()
         val launched = CompletableDeferred<Unit>()
         DownloadLocationManager.bindFolderPicker { launched.complete(Unit) }
 
-        val selection = async { DownloadLocationManager.ensureLocationSelected() }
+        val selection = async { DownloadLocationManager.ensureLocationSelectedOrPrompt() }
         launched.await()
         DownloadLocationManager.onFolderPicked(null)
 
@@ -257,11 +256,11 @@ class DownloadLocationManagerTest {
     }
 
     @Test
-    fun ensureLocationSelectedAbortsWhenPickerCannotBeOpened() = runBlocking {
+    fun ensureLocationSelectedOrPromptAbortsWhenPickerCannotBeOpened() = runBlocking {
         initializedApplication()
         DownloadLocationManager.bindFolderPicker(null)
 
-        assertFalse(DownloadLocationManager.ensureLocationSelected())
+        assertFalse(DownloadLocationManager.ensureLocationSelectedOrPrompt())
     }
 
     @Test
@@ -271,7 +270,7 @@ class DownloadLocationManagerTest {
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
 
         assertEquals("Movies", DownloadLocationManager.currentLocationLabel())
-        assertEquals("Movies", DownloadLocationState.locationLabel.value)
+        assertEquals("Movies", DownloadLocationManager.locationLabel.value)
 
         DownloadLocationManager.initialize(context)
         assertEquals("Movies", DownloadLocationManager.currentLocationLabel())
@@ -332,18 +331,5 @@ class DownloadLocationManagerTest {
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
         )
-    }
-
-    private fun safDocumentUri(documentId: String): Uri =
-        DocumentsContract.buildDocumentUriUsingTree(SAF_MOVIES_URI, documentId)
-
-    private fun registerDocumentProvider(uri: Uri): FakeDocumentsProvider =
-        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, uri.authority)
-
-    private companion object {
-        val SAF_MOVIES_URI: Uri =
-            Uri.parse("content://com.android.externalstorage.documents/tree/primary%3AMovies")
-        val SAF_NESTED_URI: Uri =
-            Uri.parse("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FNuvio")
     }
 }

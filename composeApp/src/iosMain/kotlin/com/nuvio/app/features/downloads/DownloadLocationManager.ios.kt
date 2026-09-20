@@ -1,12 +1,16 @@
 package com.nuvio.app.features.downloads
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual object DownloadLocationManager {
+    actual val locationLabel: StateFlow<String> = MutableStateFlow(downloadsDirectoryPath())
+
     actual fun ensureLocationSet(): Boolean {
         val path = downloadsDirectoryPath()
         NSFileManager.defaultManager.createDirectoryAtPath(
@@ -18,7 +22,7 @@ internal actual object DownloadLocationManager {
         return NSFileManager.defaultManager.fileExistsAtPath(path)
     }
 
-    actual suspend fun ensureLocationSelected(): Boolean = ensureLocationSet()
+    actual suspend fun ensureLocationSelectedOrPrompt(): Boolean = ensureLocationSet()
 
     actual fun currentLocationLabel(): String = downloadsDirectoryPath()
 
@@ -36,8 +40,13 @@ internal actual object DownloadLocationManager {
 
     actual suspend fun finalizeDownload(sourceFileUri: String, destinationFileName: String): String {
         val sourcePath = sourceFileUri.toLocalPath()
-            ?: error("Unsupported download source: $sourceFileUri")
         val destinationPath = "${downloadsDirectoryPath()}/$destinationFileName"
+        if (sourcePath == null || !NSFileManager.defaultManager.fileExistsAtPath(sourcePath)) {
+            check(NSFileManager.defaultManager.fileExistsAtPath(destinationPath)) {
+                "Downloaded file is no longer available: $sourceFileUri"
+            }
+            return fileUri(destinationPath)
+        }
         if (sourcePath == destinationPath) {
             return fileUri(destinationPath)
         }

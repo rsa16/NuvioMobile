@@ -31,7 +31,7 @@ import org.jetbrains.compose.resources.stringResource
 internal fun DownloadLocationSettingsScreen(
     onBack: () -> Unit,
 ) {
-    val locationLabel by DownloadLocationState.locationLabel.collectAsStateWithLifecycle()
+    val locationLabel by DownloadLocationManager.locationLabel.collectAsStateWithLifecycle()
     val openFolderFailedText = stringResource(Res.string.downloads_open_directory_failed)
     val changeFolderFailedText = stringResource(Res.string.downloads_location_change_failed)
 
@@ -39,7 +39,10 @@ internal fun DownloadLocationSettingsScreen(
         if (!DownloadLocationManager.ensureLocationSet()) {
             DownloadLocationManager.requestFolderPicker()
         }
-        DownloadLocationState.refresh()
+    }
+
+    LaunchedEffect(locationLabel) {
+        DownloadsRepository.onDownloadLocationChanged()
     }
 
     NuvioScreen(modifier = Modifier.fillMaxSize()) {

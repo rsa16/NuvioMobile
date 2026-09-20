@@ -78,9 +78,9 @@ private class SafSubtitleDirectory(private val videoUri: Uri) : SubtitleDirector
         val resolver = contentResolver() ?: error("Downloads are not initialized")
         val directory = ensureDirectory() ?: error("Cannot create the subtitle directory")
         findChild(directory, fileName)?.let { existing ->
-            runCatching { DocumentsContract.deleteDocument(resolver, existing) }
+            SafDocuments.delete(resolver, existing)
         }
-        val document = DocumentsContract.createDocument(resolver, directory, SUBTITLE_MIME_TYPE, fileName)
+        val document = SafDocuments.createDocument(resolver, directory, SUBTITLE_MIME_TYPE, fileName)
             ?: error("Cannot create the subtitle file")
         val output = resolver.openOutputStream(document, "w")
             ?: error("Cannot write the subtitle file")
@@ -88,14 +88,15 @@ private class SafSubtitleDirectory(private val videoUri: Uri) : SubtitleDirector
     }
 
     override fun fileUri(fileName: String): String? {
+        val resolver = contentResolver() ?: return null
         val document = findFile(fileName) ?: return null
-        return document.takeIf { !isDirectory(it) }?.toString()
+        return document.takeIf { !SafDocuments.isDirectory(resolver, it) }?.toString()
     }
 
     override fun remove() {
         val resolver = contentResolver() ?: return
         val directory = findDirectory() ?: return
-        runCatching { DocumentsContract.deleteDocument(resolver, directory) }
+        SafDocuments.delete(resolver, directory)
     }
 
     private fun findFile(fileName: String): Uri? {
@@ -107,7 +108,7 @@ private class SafSubtitleDirectory(private val videoUri: Uri) : SubtitleDirector
     private fun findDirectory(): Uri? {
         val parent = parentDocument() ?: return null
         val directoryName = directoryName() ?: return null
-        return findChild(parent.treeUri, parent.documentId, directoryName)
+        return SafDocuments.findChild(contentResolver() ?: return null, parent.treeUri, parent.documentId, directoryName)
     }
 
     private fun ensureDirectory(): Uri? {
@@ -115,14 +116,12 @@ private class SafSubtitleDirectory(private val videoUri: Uri) : SubtitleDirector
         val parent = parentDocument() ?: return null
         val directoryName = directoryName() ?: return null
         val resolver = contentResolver() ?: return null
-        val created = runCatching {
-            DocumentsContract.createDocument(
-                resolver,
-                parent.documentUri,
-                DocumentsContract.Document.MIME_TYPE_DIR,
-                directoryName,
-            )
-        }.getOrNull() ?: return null
+        val created = SafDocuments.createDocument(
+            resolver,
+            parent.documentUri,
+            DocumentsContract.Document.MIME_TYPE_DIR,
+            directoryName,
+        ) ?: return null
         return runCatching {
             DocumentsContract.buildDocumentUriUsingTree(parent.treeUri, DocumentsContract.getDocumentId(created))
         }.getOrNull()
@@ -131,51 +130,19 @@ private class SafSubtitleDirectory(private val videoUri: Uri) : SubtitleDirector
     private fun directoryName(): String? =
         videoDisplayName()?.let { "$it$SUBTITLES_SUFFIX" }
 
-    private fun findChild(directoryUri: Uri, displayName: String): Uri? =
+    private fun findChild(documentUri: Uri, displayName: String): Uri? =
         runCatching {
             val treeUri = DocumentsContract.buildTreeDocumentUri(
-                directoryUri.authority,
-                DocumentsContract.getTreeDocumentId(directoryUri),
+                documentUri.authority,
+                DocumentsContract.getTreeDocumentId(documentUri),
             )
-            findChild(treeUri, DocumentsContract.getDocumentId(directoryUri), displayName)
+            SafDocuments.findChild(
+                contentResolver() ?: return null,
+                treeUri,
+                DocumentsContract.getDocumentId(documentUri),
+                displayName,
+            )
         }.getOrNull()
-
-    private fun findChild(treeUri: Uri, parentDocumentId: String, displayName: String): Uri? {
-        val resolver = contentResolver() ?: return null
-        return runCatching {
-            resolver.query(
-                DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId),
-                CHILD_PROJECTION,
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                val idColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                val nameColumn = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                while (cursor.moveToNext()) {
-                    if (cursor.getString(nameColumn) == displayName) {
-                        return@use DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(idColumn))
-                    }
-                }
-                null
-            }
-        }.getOrNull()
-    }
-
-    private fun isDirectory(documentUri: Uri): Boolean {
-        val resolver = contentResolver() ?: return false
-        return runCatching {
-            resolver.query(
-                documentUri,
-                arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                cursor.moveToFirst() && cursor.getString(0) == DocumentsContract.Document.MIME_TYPE_DIR
-            }
-        }.getOrDefault(false) ?: false
-    }
 
     private fun parentDocument(): ParentDocument? {
         runCatching { DocumentsContract.getTreeDocumentId(videoUri) }.getOrNull()?.let { treeDocumentId ->
@@ -215,7 +182,7 @@ private class SafSubtitleDirectory(private val videoUri: Uri) : SubtitleDirector
             ?.takeIf { it.isNotBlank() }
 
     private fun contentResolver(): ContentResolver? =
-        DownloadLocationManager.applicationContext()?.contentResolver
+        DownloadsAndroidContext.contentResolverOrNull()
 
     private data class ParentDocument(val treeUri: Uri, val documentId: String) {
         val documentUri: Uri get() = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
@@ -230,7 +197,3 @@ private fun requireValidFileName(fileName: String) {
 
 private const val SUBTITLES_SUFFIX = ".subtitles"
 private const val SUBTITLE_MIME_TYPE = "application/octet-stream"
-private val CHILD_PROJECTION = arrayOf(
-    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-)

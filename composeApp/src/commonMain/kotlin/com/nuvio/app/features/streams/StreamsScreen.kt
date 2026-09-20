@@ -368,10 +368,11 @@ fun StreamsScreen(
                     suspend fun enqueueWithLocationPrompt(targetStream: StreamItem): DownloadEnqueueResult? {
                         val firstAttempt = enqueue(targetStream)
                         if (firstAttempt != DownloadEnqueueResult.MissingLocation) return firstAttempt
-                        if (!DownloadLocationManager.ensureLocationSelected()) {
+                        if (!DownloadLocationManager.ensureLocationSelectedOrPrompt()) {
                             NuvioToastController.show(downloadLocationPromptCancelledText)
                             return null
                         }
+                        DownloadsRepository.onDownloadLocationChanged()
                         return enqueue(targetStream)
                     }
 

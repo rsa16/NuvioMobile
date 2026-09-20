@@ -1,9 +1,13 @@
 package com.nuvio.app.features.downloads
 
+import kotlinx.coroutines.flow.StateFlow
+
 internal expect object DownloadLocationManager {
+    val locationLabel: StateFlow<String>
+
     fun ensureLocationSet(): Boolean
 
-    suspend fun ensureLocationSelected(): Boolean
+    suspend fun ensureLocationSelectedOrPrompt(): Boolean
 
     fun currentLocationLabel(): String
 

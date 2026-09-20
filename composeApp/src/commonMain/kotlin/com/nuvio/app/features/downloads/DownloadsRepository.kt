@@ -39,6 +39,14 @@ object DownloadsRepository {
         loadFromDisk()
     }
 
+    fun onDownloadLocationChanged() {
+        if (hasLoaded) {
+            scheduleLegacyMigrationIfNeeded()
+        } else {
+            ensureLoaded()
+        }
+    }
+
     fun clearLocalState() {
         activeHandles.values.forEach(DownloadsTaskHandle::cancel)
         activeHandles.clear()

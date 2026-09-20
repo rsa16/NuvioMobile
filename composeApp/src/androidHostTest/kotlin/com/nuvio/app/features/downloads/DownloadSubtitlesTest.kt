@@ -28,7 +28,6 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
@@ -150,7 +149,7 @@ class DownloadSubtitlesTest {
         val context = RuntimeEnvironment.getApplication()
         DownloadLocationManager.initialize(context)
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, SAF_MOVIES_URI.authority)
+        val provider = registerFakeDocumentsProvider()
         val paths = Collections.synchronizedList(mutableListOf<String>())
         MockWebServer().use { server ->
             serveVideoAndSubtitle(server, paths)
@@ -187,7 +186,7 @@ class DownloadSubtitlesTest {
         val context = RuntimeEnvironment.getApplication()
         DownloadLocationManager.initialize(context)
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, SAF_MOVIES_URI.authority)
+        val provider = registerFakeDocumentsProvider()
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("complete video"))
             val scheduler = AndroidDownloadScheduler(context)
@@ -207,7 +206,7 @@ class DownloadSubtitlesTest {
         val context = RuntimeEnvironment.getApplication()
         DownloadLocationManager.initialize(context)
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        val provider = Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, SAF_MOVIES_URI.authority)
+        val provider = registerFakeDocumentsProvider()
         MockWebServer().use { server ->
             serveVideoAndSubtitle(server)
             val scheduler = AndroidDownloadScheduler(context)
@@ -269,7 +268,7 @@ class DownloadSubtitlesTest {
 
         DownloadLocationManager.initialize(context)
         DownloadLocationManager.onFolderPicked(SAF_MOVIES_URI)
-        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, SAF_MOVIES_URI.authority)
+        registerFakeDocumentsProvider()
         MockWebServer().use { server ->
             serveVideoAndSubtitle(server)
             val scheduler = AndroidDownloadScheduler(context)
@@ -360,9 +359,4 @@ class DownloadSubtitlesTest {
     }
 
     private val srt = "1\n00:00:01,000 --> 00:00:02,000\nHello\n"
-
-    private companion object {
-        val SAF_MOVIES_URI: Uri =
-            Uri.parse("content://com.android.externalstorage.documents/tree/primary%3AMovies")
-    }
 }
