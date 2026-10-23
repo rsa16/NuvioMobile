@@ -462,6 +462,7 @@ kotlin {
                 implementation(libs.androidx.media3.common)
                 implementation(libs.androidx.media3.container)
                 implementation(libs.androidx.media3.extractor)
+                implementation(libs.play.services.cast.framework)
                 implementation("com.google.guava:guava:33.3.1-android")
                 implementation("androidx.media3:media3-database:1.8.0")
                 implementation("androidx.annotation:annotation-experimental:1.3.1")

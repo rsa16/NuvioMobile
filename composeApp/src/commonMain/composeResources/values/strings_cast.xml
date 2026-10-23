@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_cast_action">Cast</string>
+    <string name="player_cast_action_connected">Casting to %1$s</string>
+    <string name="player_cast_action_connected_unknown">Casting</string>
+    <string name="player_cast_action_disabled">Cast unavailable: %1$s</string>
+    <string name="player_cast_reason_torrent">torrent and P2P streams can't be cast</string>
+    <string name="player_cast_reason_local_file">downloaded files can't be cast</string>
+    <string name="player_cast_reason_external">YouTube and external streams can't be cast</string>
+    <string name="player_cast_reason_unsupported_protocol">only direct HTTP or HTTPS streams can be cast</string>
+    <string name="player_cast_reason_loopback">local network addresses can't be cast</string>
+</resources>

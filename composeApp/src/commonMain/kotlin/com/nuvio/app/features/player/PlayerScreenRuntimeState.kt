@@ -8,6 +8,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.features.addons.AddonsUiState
+import com.nuvio.app.features.cast.CastController
+import com.nuvio.app.features.cast.CastSessionState
+import com.nuvio.app.features.cast.createCastController
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaDetailsUiState
 import com.nuvio.app.features.details.MetaScreenSettingsUiState
@@ -26,6 +29,7 @@ import kotlin.time.TimeMark
 
 internal class PlayerScreenRuntime(
     args: PlayerScreenArgs,
+    castControllerFactory: () -> CastController = { createCastController() },
 ) {
     var args by mutableStateOf(args)
 
@@ -77,6 +81,8 @@ internal class PlayerScreenRuntime(
     var addonsUiState: AddonsUiState = AddonsUiState()
     var addonSubtitles: List<AddonSubtitle> = emptyList()
     var isLoadingAddonSubtitles: Boolean = false
+    val castController: CastController = castControllerFactory()
+    var castSessionState by mutableStateOf(castController.sessionState)
 
     var horizontalSafePadding: Dp = 0.dp
     var metrics: PlayerLayoutMetrics = PlayerLayoutMetrics.fromWidth(0.dp)
@@ -235,4 +241,8 @@ internal class PlayerScreenRuntime(
     var lastSyncedSettingsResizeMode: PlayerResizeMode? = null
     var lastResetPlaybackIdentity: PlaybackKey? = null
     var lastResetVideoIdentity: String? = null
+
+    init {
+        castController.onSessionStateChanged = { state -> castSessionState = state }
+    }
 }

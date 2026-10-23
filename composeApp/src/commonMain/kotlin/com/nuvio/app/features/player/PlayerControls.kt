@@ -105,6 +105,8 @@ internal fun PlayerControlsShell(
     onBack: () -> Unit,
     onPartyClick: (() -> Unit)? = null,
     partyActive: Boolean = false,
+    castAction: PlayerCastActionState? = null,
+    onCastClick: () -> Unit = {},
     onTogglePlayback: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
@@ -191,6 +193,8 @@ internal fun PlayerControlsShell(
                     onOpenInExternalPlayer = onOpenInExternalPlayer,
                     onPartyClick = onPartyClick,
                     partyActive = partyActive,
+                    castAction = castAction,
+                    onCastClick = onCastClick,
                     onBack = onBack,
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -211,6 +215,8 @@ internal fun PlayerControlsShell(
                         onPartyClick = onPartyClick,
                         partyActive = partyActive,
                         onSwitchEngineClick = onSwitchEngineClick,
+                        castAction = castAction,
+                        onCastClick = onCastClick,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Top))
@@ -354,6 +360,8 @@ private fun PlayerHeader(
     onOpenInExternalPlayer: (() -> Unit)?,
     onPartyClick: (() -> Unit)?,
     partyActive: Boolean,
+    castAction: PlayerCastActionState?,
+    onCastClick: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -471,6 +479,15 @@ private fun PlayerHeader(
                             iconSize = metrics.headerIconSize,
                             onClick = onPartyClick,
                             tint = if (partyActive) MaterialTheme.colorScheme.primary else Color.White,
+                        )
+                    }
+                    if (castAction != null) {
+                        PlayerCastActionIcon(
+                            state = castAction,
+                            onClick = onCastClick,
+                            buttonSize = metrics.headerIconSize + 16.dp,
+                            iconSize = metrics.headerIconSize,
+                            containerColor = Color.Black.copy(alpha = 0.35f),
                         )
                     }
                     PlayerHeaderIconButton(

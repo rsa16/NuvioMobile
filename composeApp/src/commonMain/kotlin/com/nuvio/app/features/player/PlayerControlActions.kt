@@ -64,6 +64,8 @@ internal fun PlayerToolbar(
     onPartyClick: (() -> Unit)? = null,
     partyActive: Boolean = false,
     onSwitchEngineClick: (() -> Unit)? = null,
+    castAction: PlayerCastActionState? = null,
+    onCastClick: () -> Unit = {},
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
@@ -80,6 +82,12 @@ internal fun PlayerToolbar(
                 icon = Icons.Rounded.Groups,
                 onClick = onPartyClick,
                 tint = if (partyActive) MaterialTheme.colorScheme.primary else Color.White,
+            )
+        }
+        if (castAction != null) {
+            PlayerCastActionIcon(
+                state = castAction,
+                onClick = onCastClick,
             )
         }
         PlayerAction(
