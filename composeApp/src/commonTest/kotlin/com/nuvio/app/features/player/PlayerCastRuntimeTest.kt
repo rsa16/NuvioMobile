@@ -153,6 +153,7 @@ private class FakeCastController(
         private set
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
     override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
+    override var onPlaybackFailed: (() -> Unit)? = null
 
     var pickerShows = 0
         private set
@@ -180,6 +181,11 @@ private class FakeCastController(
     override fun seekTo(positionMs: Long) = Unit
 
     override fun seekBy(offsetMs: Long) = Unit
+
+    override fun endSession() {
+        sessionState = CastSessionState.Disconnected
+        onSessionStateChanged?.invoke(sessionState)
+    }
 
     override fun close() {
         sessionState = CastSessionState.Disconnected

@@ -2,6 +2,7 @@ package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.cast.CastIneligibilityReason
 import com.nuvio.app.features.cast.CastMediaRequest
@@ -11,6 +12,7 @@ import com.nuvio.app.features.cast.CastSource
 import com.nuvio.app.features.cast.CastSourceEligibility
 import com.nuvio.app.features.cast.buildCastMediaRequest
 import com.nuvio.app.features.cast.castSourceEligibility
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
@@ -81,6 +83,9 @@ internal fun PlayerScreenRuntime.beginCastHandoff() {
     if (currentCastEligibility !is CastSourceEligibility.Eligible) return
 
     val startPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
+    castHandoffStartPositionMs = startPositionMs
+    castWasPlayingBeforeHandoff = playbackSnapshot.isPlaying
+    hasCastPlaybackStarted = false
     castRemoteSnapshot = null
     isCastCasting = true
 
@@ -88,10 +93,29 @@ internal fun PlayerScreenRuntime.beginCastHandoff() {
     playerController?.pause()
 
     castController.load(buildCurrentCastMediaRequest(startPositionMs))
+    startCastPlaybackTimeout()
+}
+
+// reloads cast target after the active stream changes.
+internal fun PlayerScreenRuntime.onCastPlaybackSourceChanged() {
+    if (!isCastCasting) return
+    when (val eligibility = currentCastEligibility) {
+        CastSourceEligibility.Eligible -> reloadCastForActiveSource()
+        is CastSourceEligibility.Ineligible -> {
+            finishCastHandoff(showMessage = false)
+            endCastSession()
+            castMessageRes = eligibility.reason.messageRes
+        }
+    }
 }
 
 internal fun PlayerScreenRuntime.onCastRemoteSnapshot(snapshot: CastRemoteSnapshot) {
     if (!isCastCasting) return
+    if (snapshot.isPlaying) {
+        hasCastPlaybackStarted = true
+        castLoadTimeoutJob?.cancel()
+        castLoadTimeoutJob = null
+    }
     castRemoteSnapshot = snapshot
     val previous = playbackSnapshot
     updatePlaybackSnapshot(
@@ -111,17 +135,65 @@ internal fun PlayerScreenRuntime.onCastRemoteSnapshot(snapshot: CastRemoteSnapsh
 }
 
 /**
+ * If cast is rejected, local playback should resume where it left off.
+ * End session so the action button updates state.
+ */
+internal fun PlayerScreenRuntime.onCastPlaybackFailed() {
+    if (!isCastCasting) return
+    val positionMs = castHandoffStartPositionMs
+    val wasPlaying = castWasPlayingBeforeHandoff
+    restoreLocalPlayback(positionMs = positionMs, wasPlaying = wasPlaying)
+    castMessageRes = Res.string.player_cast_error_failed
+    endCastSession()
+}
+
+/**
  * Resumes Local Playback at the last remote position, playing only when the
  * receiver was playing.
  */
-internal fun PlayerScreenRuntime.finishCastHandoff() {
+internal fun PlayerScreenRuntime.finishCastHandoff(showMessage: Boolean = true) {
     if (!isCastCasting) return
     val remote = castRemoteSnapshot
     val positionMs = (remote?.positionMs ?: playbackSnapshot.positionMs).coerceAtLeast(0L)
     val wasPlaying = remote?.isPlaying == true
 
+    restoreLocalPlayback(positionMs = positionMs, wasPlaying = wasPlaying)
+    if (showMessage) {
+        castMessageRes = Res.string.player_cast_session_ended
+    }
+}
+
+private fun PlayerScreenRuntime.reloadCastForActiveSource() {
+    val startPositionMs = activeInitialPositionMs.coerceAtLeast(0L)
+    castHandoffStartPositionMs = startPositionMs
+    castWasPlayingBeforeHandoff = playbackSnapshot.isPlaying
+    hasCastPlaybackStarted = false
+    castRemoteSnapshot = null
+    shouldPlay = false
+
+    playerController?.pause()
+    castController.pause()
+    castController.load(buildCurrentCastMediaRequest(startPositionMs))
+    startCastPlaybackTimeout()
+}
+
+private fun PlayerScreenRuntime.startCastPlaybackTimeout() {
+    if (!hasScope) return
+    castLoadTimeoutJob?.cancel()
+    castLoadTimeoutJob = scope.launch {
+        delay(CastPlaybackStartTimeoutMs)
+        if (isCastCasting && !hasCastPlaybackStarted) {
+            onCastPlaybackFailed()
+        }
+    }
+}
+
+private fun PlayerScreenRuntime.restoreLocalPlayback(positionMs: Long, wasPlaying: Boolean) {
     flushWatchProgress()
 
+    castLoadTimeoutJob?.cancel()
+    castLoadTimeoutJob = null
+    hasCastPlaybackStarted = false
     isCastCasting = false
     castRemoteSnapshot = null
     isScrubbingTimeline = false
@@ -135,6 +207,11 @@ internal fun PlayerScreenRuntime.finishCastHandoff() {
     shouldPlay = wasPlaying
     if (wasPlaying) playerController?.play() else playerController?.pause()
     controlsVisible = true
+}
+
+private fun PlayerScreenRuntime.endCastSession() {
+    castSessionState = CastSessionState.Disconnected
+    castController.endSession()
 }
 
 internal fun PlayerScreenRuntime.acceptLocalSnapshot(
@@ -167,13 +244,21 @@ private fun PlayerScreenRuntime.showCastIneligibility(reason: CastIneligibilityR
 
 @Composable
 internal fun PlayerScreenRuntime.BindCastSessionEffects() {
+    LaunchedEffect(castMessageRes) {
+        val messageRes = castMessageRes ?: return@LaunchedEffect
+        castMessageRes = null
+        NuvioToastController.show(getString(messageRes))
+    }
     DisposableEffect(castController) {
         onDispose {
             castController.onRemoteSnapshotChanged = null
+            castController.onPlaybackFailed = null
             castController.close()
         }
     }
 }
+
+private const val CastPlaybackStartTimeoutMs = 15_000L
 
 private fun CastSourceEligibility.ineligibleReason(): CastIneligibilityReason? =
     (this as? CastSourceEligibility.Ineligible)?.reason

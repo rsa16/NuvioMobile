@@ -26,6 +26,7 @@ import com.nuvio.app.features.watched.WatchedUiState
 import com.nuvio.app.features.watchprogress.WatchProgressUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import org.jetbrains.compose.resources.StringResource
 import kotlin.time.TimeMark
 
 internal class PlayerScreenRuntime(
@@ -70,6 +71,8 @@ internal class PlayerScreenRuntime(
     lateinit var scope: CoroutineScope
     lateinit var hapticFeedback: HapticFeedback
 
+    val hasScope: Boolean get() = ::scope.isInitialized
+
     var playerSettingsUiState: PlayerSettingsUiState = PlayerSettingsUiState()
     var p2pSettingsUiState by mutableStateOf(P2pSettingsUiState())
     var p2pStreamingState by mutableStateOf<P2pStreamingState>(P2pStreamingState.Idle)
@@ -86,6 +89,11 @@ internal class PlayerScreenRuntime(
     var castSessionState by mutableStateOf(castController.sessionState)
     var isCastCasting by mutableStateOf(false)
     var castRemoteSnapshot by mutableStateOf<CastRemoteSnapshot?>(null)
+    var castMessageRes by mutableStateOf<StringResource?>(null)
+    var castHandoffStartPositionMs by mutableStateOf(0L)
+    var castWasPlayingBeforeHandoff by mutableStateOf(false)
+    var hasCastPlaybackStarted by mutableStateOf(false)
+    var castLoadTimeoutJob by mutableStateOf<Job?>(null)
 
     val localPlaybackCommandSink: PlaybackCommandSink by lazy {
         LocalPlaybackCommandSink { playerController }
@@ -257,5 +265,6 @@ internal class PlayerScreenRuntime(
     init {
         castController.onSessionStateChanged = { state -> onCastSessionStateChanged(state) }
         castController.onRemoteSnapshotChanged = { snapshot -> onCastRemoteSnapshot(snapshot) }
+        castController.onPlaybackFailed = { onCastPlaybackFailed() }
     }
 }

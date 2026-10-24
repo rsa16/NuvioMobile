@@ -5,13 +5,21 @@ import com.nuvio.app.features.cast.CastController
 import com.nuvio.app.features.cast.CastMediaRequest
 import com.nuvio.app.features.cast.CastRemoteSnapshot
 import com.nuvio.app.features.cast.CastSessionState
+import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.streams.StreamItem
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
+import nuvio.composeapp.generated.resources.Res
+import nuvio.composeapp.generated.resources.player_cast_error_failed
+import nuvio.composeapp.generated.resources.player_cast_session_ended
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class PlayerCastHandoffTest {
 
     @Test
@@ -172,6 +180,144 @@ class PlayerCastHandoffTest {
         assertNull(runtime.castRemoteSnapshot)
         assertEquals(listOf("pause", "seekTo:90000", "play"), local.commands)
         assertTrue(runtime.shouldPlay)
+        assertEquals(CastSessionState.Disconnected, runtime.castSessionState)
+        assertEquals(Res.string.player_cast_session_ended, runtime.castMessageRes)
+    }
+
+    @Test
+    fun aFailedLoadShowsTheFailureMessageAndRestoresThePreCastPosition() = runTest {
+        val controller = HandoffCastController()
+        val local = HandoffPlayerEngine()
+        val runtime = runtime(controller).apply {
+            scope = backgroundScope
+            playerController = local
+        }
+        controller.connect("Living Room TV")
+        runtime.onCastRemoteSnapshot(
+            CastRemoteSnapshot(positionMs = 90_000L, durationMs = 600_000L, isPlaying = true, isLoading = false),
+        )
+        local.commands.clear()
+
+        controller.fail()
+
+        assertEquals(Res.string.player_cast_error_failed, runtime.castMessageRes)
+        assertFalse(runtime.isCastCasting)
+        assertNull(runtime.castRemoteSnapshot)
+        assertEquals(351_000L, runtime.playbackSnapshot.positionMs)
+        assertEquals(listOf("seekTo:351000", "play"), local.commands)
+        assertTrue(runtime.shouldPlay)
+        assertEquals(CastSessionState.Disconnected, runtime.castSessionState)
+        assertEquals(1, controller.endedSessions)
+        assertTrue(runtime.castActionState?.isEnabled == true)
+        assertFalse(runtime.castActionState?.isConnected == true)
+    }
+
+    @Test
+    fun noPlayingWithinFifteenSecondsIsTreatedAsAFailure() = runTest {
+        val controller = HandoffCastController()
+        val local = HandoffPlayerEngine()
+        val runtime = runtime(controller).apply {
+            scope = backgroundScope
+            playerController = local
+        }
+        controller.connect("Living Room TV")
+        runtime.onCastRemoteSnapshot(
+            CastRemoteSnapshot(positionMs = 0L, durationMs = 600_000L, isPlaying = false, isLoading = true),
+        )
+
+        advanceTimeBy(14_000L)
+        assertTrue(runtime.isCastCasting)
+
+        advanceTimeBy(2_000L)
+
+        assertFalse(runtime.isCastCasting)
+        assertEquals(Res.string.player_cast_error_failed, runtime.castMessageRes)
+        assertEquals(351_000L, runtime.playbackSnapshot.positionMs)
+        assertEquals(listOf("pause", "seekTo:351000", "play"), local.commands)
+        assertEquals(1, controller.endedSessions)
+    }
+
+    @Test
+    fun aRemoteThatStartsPlayingWithinFifteenSecondsKeepsTheSession() = runTest {
+        val controller = HandoffCastController()
+        val runtime = runtime(controller).apply { scope = backgroundScope }
+        controller.connect("Living Room TV")
+
+        runtime.onCastRemoteSnapshot(
+            CastRemoteSnapshot(positionMs = 12_000L, durationMs = 600_000L, isPlaying = true, isLoading = false),
+        )
+        advanceTimeBy(20_000L)
+
+        assertTrue(runtime.isCastCasting)
+        assertNull(runtime.castMessageRes)
+        assertEquals(0, controller.endedSessions)
+    }
+
+    @Test
+    fun switchingSourceWhileConnectedReloadsTheTargetWithoutStartingLocalAudio() = runTest {
+        val controller = HandoffCastController()
+        val local = HandoffPlayerEngine()
+        val runtime = runtime(controller).apply {
+            scope = backgroundScope
+            playerController = local
+        }
+        controller.connect("Living Room TV")
+        local.commands.clear()
+
+        runtime.switchToSource(
+            StreamItem(
+                url = "https://example.com/other.mp4",
+                streamType = "mp4",
+                name = "Other Source",
+                addonName = "Provider",
+                addonId = "addon",
+            ),
+        )
+
+        assertEquals(2, controller.loaded.size)
+        val reload = controller.loaded.last()
+        assertEquals("https://example.com/other.mp4", reload.url)
+        assertEquals(351_000L, reload.startPositionMs)
+        assertTrue(runtime.isCastCasting)
+        assertFalse(runtime.shouldPlay)
+        assertFalse(local.commands.contains("play"))
+    }
+
+    @Test
+    fun advancingToTheNextEpisodeReloadsTheTargetWithTheEpisodeMetadata() = runTest {
+        val controller = HandoffCastController()
+        val local = HandoffPlayerEngine()
+        val runtime = runtime(controller).apply {
+            scope = backgroundScope
+            playerController = local
+        }
+        controller.connect("Living Room TV")
+        local.commands.clear()
+
+        runtime.switchToEpisodeStream(
+            stream = StreamItem(
+                url = "https://example.com/episode-3.mp4",
+                streamType = "mp4",
+                name = "Next Source",
+                addonName = "Provider",
+                addonId = "addon",
+            ),
+            episode = MetaVideo(
+                id = "tt1234567:2:1",
+                title = "Next Episode",
+                season = 2,
+                episode = 1,
+            ),
+        )
+
+        assertEquals(2, controller.loaded.size)
+        val reload = controller.loaded.last()
+        assertEquals("https://example.com/episode-3.mp4", reload.url)
+        assertEquals("S2E1 · Next Episode", reload.subtitle)
+        assertEquals(0L, reload.startPositionMs)
+        assertTrue(runtime.isCastCasting)
+        assertFalse(runtime.shouldPlay)
+        assertFalse(local.commands.contains("play"))
     }
 
     @Test
@@ -248,9 +394,12 @@ private class HandoffCastController(
         private set
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
     override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
+    override var onPlaybackFailed: (() -> Unit)? = null
 
     val loaded = mutableListOf<CastMediaRequest>()
     val commands = mutableListOf<String>()
+    var endedSessions = 0
+        private set
 
     fun connect(deviceName: String) {
         sessionState = CastSessionState.Connected(deviceName)
@@ -260,6 +409,10 @@ private class HandoffCastController(
     fun end() {
         sessionState = CastSessionState.Disconnected
         onSessionStateChanged?.invoke(sessionState)
+    }
+
+    fun fail() {
+        onPlaybackFailed?.invoke()
     }
 
     override fun showDevicePicker() = Unit
@@ -283,6 +436,11 @@ private class HandoffCastController(
 
     override fun seekBy(offsetMs: Long) {
         commands += "seekBy:$offsetMs"
+    }
+
+    override fun endSession() {
+        endedSessions += 1
+        end()
     }
 
     override fun close() = Unit

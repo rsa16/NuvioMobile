@@ -21,6 +21,7 @@ internal interface CastController {
 
     var onSessionStateChanged: ((CastSessionState) -> Unit)?
     var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)?
+    var onPlaybackFailed: (() -> Unit)?
 
     fun showDevicePicker()
 
@@ -29,6 +30,7 @@ internal interface CastController {
     fun pause()
     fun seekTo(positionMs: Long)
     fun seekBy(offsetMs: Long)
+    fun endSession()
     fun close()
 }
 
@@ -36,6 +38,7 @@ internal class UnavailableCastController : CastController {
     override val sessionState: CastSessionState = CastSessionState.Unavailable
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
     override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
+    override var onPlaybackFailed: (() -> Unit)? = null
 
     override fun showDevicePicker() = Unit
     override fun load(request: CastMediaRequest) = Unit
@@ -43,6 +46,7 @@ internal class UnavailableCastController : CastController {
     override fun pause() = Unit
     override fun seekTo(positionMs: Long) = Unit
     override fun seekBy(offsetMs: Long) = Unit
+    override fun endSession() = Unit
     override fun close() = Unit
 }
 

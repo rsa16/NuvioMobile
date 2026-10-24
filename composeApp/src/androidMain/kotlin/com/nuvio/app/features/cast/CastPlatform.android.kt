@@ -79,12 +79,14 @@ private class AndroidCastController(
 
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
     override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
+    override var onPlaybackFailed: (() -> Unit)? = null
 
     override var sessionState: CastSessionState = sessionManager.currentSessionState()
         private set
 
     private var remoteMediaClient: RemoteMediaClient? = null
     private var remoteClientCallback: RemoteMediaClient.Callback? = null
+    private var loadFailed = false
 
     private val listener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) {
@@ -158,6 +160,7 @@ private class AndroidCastController(
 
     override fun load(request: CastMediaRequest) {
         val client = remoteMediaClient ?: return
+        loadFailed = false
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, request.title)
             request.subtitle?.let { putString(MediaMetadata.KEY_SUBTITLE, it) }
@@ -196,6 +199,12 @@ private class AndroidCastController(
         seekTo(client.approximateStreamPosition + offsetMs)
     }
 
+    override fun endSession() {
+        detachRemoteClient()
+        runCatching { sessionManager.endCurrentSession(true) }
+        publish(CastSessionState.Disconnected)
+    }
+
     override fun close() {
         val shouldEndSession = sessionState is CastSessionState.Connected ||
             sessionState is CastSessionState.Connecting ||
@@ -210,6 +219,7 @@ private class AndroidCastController(
         sessionState = CastSessionState.Disconnected
         onSessionStateChanged = null
         onRemoteSnapshotChanged = null
+        onPlaybackFailed = null
     }
 
     private fun attachRemoteClient(session: CastSession) {
@@ -240,6 +250,16 @@ private class AndroidCastController(
         val client = remoteMediaClient ?: return
         val status = client.mediaStatus ?: return
         val playerState = status.playerState
+        if (
+            playerState == MediaStatus.PLAYER_STATE_IDLE &&
+            status.idleReason == MediaStatus.IDLE_REASON_ERROR
+        ) {
+            if (!loadFailed) {
+                loadFailed = true
+                onPlaybackFailed?.invoke()
+            }
+            return
+        }
         val isLoading = playerState == MediaStatus.PLAYER_STATE_BUFFERING ||
             playerState == MediaStatus.PLAYER_STATE_LOADING ||
             (playerState == MediaStatus.PLAYER_STATE_IDLE &&

@@ -81,6 +81,7 @@ private class RecordingCastController : CastController {
         private set
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
     override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
+    override var onPlaybackFailed: (() -> Unit)? = null
 
     var closes = 0
         private set
@@ -96,6 +97,11 @@ private class RecordingCastController : CastController {
     override fun seekTo(positionMs: Long) = Unit
 
     override fun seekBy(offsetMs: Long) = Unit
+
+    override fun endSession() {
+        sessionState = CastSessionState.Disconnected
+        onSessionStateChanged?.invoke(sessionState)
+    }
 
     override fun close() {
         closes += 1

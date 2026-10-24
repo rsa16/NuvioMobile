@@ -129,7 +129,7 @@ internal fun PlayerScreenRuntime.resetIdentityStateIfNeeded() {
     val identity = activePlaybackKey
     if (lastResetPlaybackIdentity != identity) {
         lastResetPlaybackIdentity = identity
-        shouldPlay = true
+        shouldPlay = !isCastCasting
         initialLoadCompleted = false
         speedBoostRestoreSpeed = null
         isHoldToSpeedGestureActive = false

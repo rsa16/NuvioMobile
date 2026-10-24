@@ -9,4 +9,6 @@
     <string name="player_cast_reason_external">YouTube and external streams can't be cast</string>
     <string name="player_cast_reason_unsupported_protocol">only direct HTTP or HTTPS streams can be cast</string>
     <string name="player_cast_reason_loopback">local network addresses can't be cast</string>
+    <string name="player_cast_error_failed">This stream couldn't play on your TV…</string>
+    <string name="player_cast_session_ended">Disconnected from your TV. Playback continues on this device.</string>
 </resources>

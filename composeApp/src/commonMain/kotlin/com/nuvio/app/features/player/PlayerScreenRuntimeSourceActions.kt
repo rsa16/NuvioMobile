@@ -237,6 +237,7 @@ internal fun PlayerScreenRuntime.switchToP2pSourceStream(stream: StreamItem) {
     showSourcesPanel = false
     controlsVisible = true
     PlayerStreamsRepository.pauseSearchForPlayback()
+    onCastPlaybackSourceChanged()
 }
 
 internal fun PlayerScreenRuntime.switchToP2pEpisodeStream(
@@ -272,6 +273,7 @@ internal fun PlayerScreenRuntime.switchToP2pEpisodeStream(
     activeTorrentFilename = stream.behaviorHints.filename
     activeTorrentTrackers = stream.p2pTrackers
     applyEpisodeStreamMetadata(stream, episode, resume)
+    onCastPlaybackSourceChanged()
 }
 
 internal fun PlayerScreenRuntime.switchToSource(
@@ -340,6 +342,7 @@ internal fun PlayerScreenRuntime.switchToSource(
     showSourcesPanel = false
     controlsVisible = true
     PlayerStreamsRepository.pauseSearchForPlayback()
+    onCastPlaybackSourceChanged()
 }
 
 internal fun PlayerScreenRuntime.switchToEpisodeStream(
@@ -392,6 +395,7 @@ internal fun PlayerScreenRuntime.switchToEpisodeStream(
     activeSourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response)
     activeStreamType = stream.streamType
     applyEpisodeStreamMetadata(stream, episode, resume)
+    onCastPlaybackSourceChanged()
 }
 
 internal fun PlayerScreenRuntime.switchToDownloadedEpisode(downloadItem: DownloadItem, episode: MetaVideo) {
@@ -446,6 +450,7 @@ internal fun PlayerScreenRuntime.switchToDownloadedEpisode(downloadItem: Downloa
     activeInitialPositionMs = epResumePositionMs
     activeInitialProgressFraction = epResumeFraction
     controlsVisible = true
+    onCastPlaybackSourceChanged()
 }
 
 internal fun PlayerScreenRuntime.playNextEpisode(automatic: Boolean = false) {
