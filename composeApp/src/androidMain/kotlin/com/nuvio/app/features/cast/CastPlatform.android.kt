@@ -2,8 +2,14 @@ package com.nuvio.app.features.cast
 
 import android.app.Activity
 import android.content.Context
+import android.net.Uri
+import android.util.Log
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.app.MediaRouteControllerDialog
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaLoadRequestData
+import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.CastMediaControlIntent
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastOptions
@@ -12,8 +18,10 @@ import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.SessionProvider
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.images.WebImage
 import java.lang.ref.WeakReference
 
 /**
@@ -70,9 +78,13 @@ private class AndroidCastController(
     private val sessionManager: SessionManager = castContext.sessionManager
 
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
+    override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
 
     override var sessionState: CastSessionState = sessionManager.currentSessionState()
         private set
+
+    private var remoteMediaClient: RemoteMediaClient? = null
+    private var remoteClientCallback: RemoteMediaClient.Callback? = null
 
     private val listener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) {
@@ -80,18 +92,22 @@ private class AndroidCastController(
         }
 
         override fun onSessionStarted(session: CastSession, sessionId: String) {
+            attachRemoteClient(session)
             publish(session.connectedState())
         }
 
         override fun onSessionStartFailed(session: CastSession, error: Int) {
+            detachRemoteClient()
             publish(CastSessionState.Disconnected)
         }
 
         override fun onSessionEnding(session: CastSession) {
+            detachRemoteClient()
             publish(CastSessionState.Disconnected)
         }
 
         override fun onSessionEnded(session: CastSession, error: Int) {
+            detachRemoteClient()
             publish(CastSessionState.Disconnected)
         }
 
@@ -100,17 +116,18 @@ private class AndroidCastController(
         }
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            attachRemoteClient(session)
             publish(session.connectedState())
         }
 
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            detachRemoteClient()
             publish(CastSessionState.Disconnected)
         }
 
         override fun onSessionSuspended(session: CastSession, reason: Int) {
-            // Suspension is recoverable: the receiver can still be playing and the
-            // session can resume. Keep the connected state instead of treating it
-            // as a disconnect; onSessionEnded still reports the real disconnect.
+            // Suspension doesn't mean disconnect, since it's possible the reciever is
+            // still playing and the session can resume. Hence we still consider connected.
             if (sessionState !is CastSessionState.Connected) {
                 publish(session.connectedState())
             }
@@ -119,6 +136,7 @@ private class AndroidCastController(
 
     init {
         sessionManager.addSessionManagerListener(listener, CastSession::class.java)
+        sessionManager.currentCastSession?.let(::attachRemoteClient)
     }
 
     override fun showDevicePicker() {
@@ -138,10 +156,51 @@ private class AndroidCastController(
         }
     }
 
+    override fun load(request: CastMediaRequest) {
+        val client = remoteMediaClient ?: return
+        val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
+            putString(MediaMetadata.KEY_TITLE, request.title)
+            request.subtitle?.let { putString(MediaMetadata.KEY_SUBTITLE, it) }
+            request.artworkUrl?.let { addImage(WebImage(Uri.parse(it))) }
+        }
+        val mediaInfo = MediaInfo.Builder(request.url)
+            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+            .setContentType(request.mimeType)
+            .setMetadata(metadata)
+            .build()
+        runCastCommand("load") {
+            client.load(
+                MediaLoadRequestData.Builder()
+                    .setMediaInfo(mediaInfo)
+                    .setAutoplay(true)
+                    .setCurrentTime(request.startPositionMs)
+                    .build(),
+            )
+        }
+    }
+
+    override fun play() {
+        runCastCommand("play") { remoteMediaClient?.play() }
+    }
+
+    override fun pause() {
+        runCastCommand("pause") { remoteMediaClient?.pause() }
+    }
+
+    override fun seekTo(positionMs: Long) {
+        runCastCommand("seek") { remoteMediaClient?.seek(positionMs.coerceAtLeast(0L)) }
+    }
+
+    override fun seekBy(offsetMs: Long) {
+        val client = remoteMediaClient ?: return
+        seekTo(client.approximateStreamPosition + offsetMs)
+    }
+
     override fun close() {
         val shouldEndSession = sessionState is CastSessionState.Connected ||
             sessionState is CastSessionState.Connecting ||
             runCatching { sessionManager.currentCastSession != null }.getOrDefault(false)
+        detachRemoteClient()
         runCatching {
             sessionManager.removeSessionManagerListener(listener, CastSession::class.java)
         }
@@ -150,6 +209,51 @@ private class AndroidCastController(
         }
         sessionState = CastSessionState.Disconnected
         onSessionStateChanged = null
+        onRemoteSnapshotChanged = null
+    }
+
+    private fun attachRemoteClient(session: CastSession) {
+        val client = session.remoteMediaClient ?: return
+        detachRemoteClient()
+        remoteMediaClient = client
+        val callback = object : RemoteMediaClient.Callback() {
+            override fun onStatusUpdated() {
+                publishRemoteStatus()
+            }
+        }
+        remoteClientCallback = callback
+        client.registerCallback(callback)
+        publishRemoteStatus()
+    }
+
+    private fun detachRemoteClient() {
+        val callback = remoteClientCallback
+        val client = remoteMediaClient
+        if (callback != null && client != null) {
+            runCatching { client.unregisterCallback(callback) }
+        }
+        remoteClientCallback = null
+        remoteMediaClient = null
+    }
+
+    private fun publishRemoteStatus() {
+        val client = remoteMediaClient ?: return
+        val status = client.mediaStatus ?: return
+        val playerState = status.playerState
+        val isLoading = playerState == MediaStatus.PLAYER_STATE_BUFFERING ||
+            playerState == MediaStatus.PLAYER_STATE_LOADING ||
+            (playerState == MediaStatus.PLAYER_STATE_IDLE &&
+                status.idleReason == MediaStatus.IDLE_REASON_NONE)
+        onRemoteSnapshotChanged?.invoke(
+            CastRemoteSnapshot(
+                positionMs = client.approximateStreamPosition.coerceAtLeast(0L),
+                durationMs = status.mediaInfo?.streamDuration?.coerceAtLeast(0L) ?: 0L,
+                isPlaying = playerState == MediaStatus.PLAYER_STATE_PLAYING,
+                isLoading = isLoading,
+                isEnded = playerState == MediaStatus.PLAYER_STATE_IDLE &&
+                    status.idleReason == MediaStatus.IDLE_REASON_FINISHED,
+            ),
+        )
     }
 
     private fun publish(state: CastSessionState) {
@@ -164,3 +268,11 @@ private class AndroidCastController(
         currentCastSession?.connectedState() ?: CastSessionState.Disconnected
     }.getOrDefault(CastSessionState.Disconnected)
 }
+
+private fun runCastCommand(command: String, block: () -> Unit) {
+    runCatching(block).onFailure { error ->
+        Log.w(CAST_LOG_TAG, "Cast $command failed (${error::class.java.simpleName})")
+    }
+}
+
+private const val CAST_LOG_TAG = "NuvioCast"

@@ -4,6 +4,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.nuvio.app.features.cast.CastController
+import com.nuvio.app.features.cast.CastMediaRequest
+import com.nuvio.app.features.cast.CastRemoteSnapshot
 import com.nuvio.app.features.cast.CastSessionState
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -78,11 +80,22 @@ private class RecordingCastController : CastController {
     override var sessionState: CastSessionState = CastSessionState.Connected("Living Room TV")
         private set
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
+    override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
 
     var closes = 0
         private set
 
     override fun showDevicePicker() = Unit
+
+    override fun load(request: CastMediaRequest) = Unit
+
+    override fun play() = Unit
+
+    override fun pause() = Unit
+
+    override fun seekTo(positionMs: Long) = Unit
+
+    override fun seekBy(offsetMs: Long) = Unit
 
     override fun close() {
         closes += 1

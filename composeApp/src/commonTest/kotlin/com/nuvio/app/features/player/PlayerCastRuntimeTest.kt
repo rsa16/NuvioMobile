@@ -3,6 +3,8 @@ package com.nuvio.app.features.player
 import androidx.compose.ui.Modifier
 import com.nuvio.app.features.cast.CastController
 import com.nuvio.app.features.cast.CastIneligibilityReason
+import com.nuvio.app.features.cast.CastMediaRequest
+import com.nuvio.app.features.cast.CastRemoteSnapshot
 import com.nuvio.app.features.cast.CastSessionState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -150,6 +152,7 @@ private class FakeCastController(
     override var sessionState: CastSessionState = initialState
         private set
     override var onSessionStateChanged: ((CastSessionState) -> Unit)? = null
+    override var onRemoteSnapshotChanged: ((CastRemoteSnapshot) -> Unit)? = null
 
     var pickerShows = 0
         private set
@@ -167,6 +170,16 @@ private class FakeCastController(
     override fun showDevicePicker() {
         pickerShows += 1
     }
+
+    override fun load(request: CastMediaRequest) = Unit
+
+    override fun play() = Unit
+
+    override fun pause() = Unit
+
+    override fun seekTo(positionMs: Long) = Unit
+
+    override fun seekBy(offsetMs: Long) = Unit
 
     override fun close() {
         sessionState = CastSessionState.Disconnected

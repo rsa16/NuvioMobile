@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.features.addons.AddonsUiState
 import com.nuvio.app.features.cast.CastController
+import com.nuvio.app.features.cast.CastRemoteSnapshot
 import com.nuvio.app.features.cast.CastSessionState
 import com.nuvio.app.features.cast.createCastController
 import com.nuvio.app.features.details.MetaDetails
@@ -83,6 +84,17 @@ internal class PlayerScreenRuntime(
     var isLoadingAddonSubtitles: Boolean = false
     val castController: CastController = castControllerFactory()
     var castSessionState by mutableStateOf(castController.sessionState)
+    var isCastCasting by mutableStateOf(false)
+    var castRemoteSnapshot by mutableStateOf<CastRemoteSnapshot?>(null)
+
+    val localPlaybackCommandSink: PlaybackCommandSink by lazy {
+        LocalPlaybackCommandSink { playerController }
+    }
+    val remotePlaybackCommandSink: PlaybackCommandSink by lazy {
+        RemotePlaybackCommandSink(castController)
+    }
+    val playbackCommandSink: PlaybackCommandSink
+        get() = if (isCastCasting) remotePlaybackCommandSink else localPlaybackCommandSink
 
     var horizontalSafePadding: Dp = 0.dp
     var metrics: PlayerLayoutMetrics = PlayerLayoutMetrics.fromWidth(0.dp)
@@ -243,6 +255,7 @@ internal class PlayerScreenRuntime(
     var lastResetVideoIdentity: String? = null
 
     init {
-        castController.onSessionStateChanged = { state -> castSessionState = state }
+        castController.onSessionStateChanged = { state -> onCastSessionStateChanged(state) }
+        castController.onRemoteSnapshotChanged = { snapshot -> onCastRemoteSnapshot(snapshot) }
     }
 }

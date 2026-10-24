@@ -580,9 +580,9 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
             activeSkipInterval = current
             if (current != null) skipIntervalDismissed = false
         }
-        val controller = playerController
-        if (current != null && controller != null &&
-            playerControllerSourceUrl == activeSourceUrl &&
+        val canSeek = isCastCasting || playerController != null
+        if (current != null && canSeek &&
+            (isCastCasting || playerControllerSourceUrl == activeSourceUrl) &&
             playerSettingsUiState.skipIntroEnabled && playbackSnapshot.isPlaying &&
             !isScrubbingTimeline && initialSeekApplied && !isPartyControlLocked &&
             current.shouldAutoSkip(playerSettingsUiState.autoSkipSegmentTypes) &&
@@ -593,7 +593,7 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
             val seekPositionMs = if (durationMs > 0L) rawMs.coerceAtMost(durationMs - 1) else rawMs
             val notification = current.autoSkipNotificationMessage(seekPositionMs)
             autoSkippedIntervals.add(current)
-            controller.seekTo(seekPositionMs)
+            playbackCommandSink.seekTo(seekPositionMs)
             scheduleProgressSyncAfterSeek()
             publishPartyPlayback(positionMs = seekPositionMs)
             skipIntervalDismissed = true

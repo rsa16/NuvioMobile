@@ -188,7 +188,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                         }
                     },
                     onSnapshot = { snapshot ->
-                        if (!active.value || !updatePlaybackSnapshot(snapshot, playbackKey)) return@PlatformPlayerSurface
+                        if (!active.value) return@PlatformPlayerSurface
+                        if (!acceptLocalSnapshot(snapshot, playbackKey)) return@PlatformPlayerSurface
                         refreshAudioTracksIfChanged()
                         if (!snapshot.isLoading) initialLoadCompleted = true
                         if (snapshot.isEnded) {
@@ -408,7 +409,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                     scrubbingPositionMs = null
                 } else {
                     finishTimelineScrub(targetMs)
-                    playerController?.seekTo(targetMs)
+                    playbackCommandSink.seekTo(targetMs)
                     scheduleProgressSyncAfterSeek()
                     publishPartyPlayback(positionMs = targetMs)
                 }
@@ -474,7 +475,7 @@ private fun BoxScope.RenderPlaybackOverlays(
                 val requestedMs = if (durationMs > 0L) action.targetMs.coerceAtMost(durationMs - 1) else action.targetMs
                 val seekMs = if (isPartyControlLocked) ownSeekTarget(requestedMs) else requestedMs
                 if (seekMs != null) {
-                    playerController?.seekTo(seekMs)
+                    playbackCommandSink.seekTo(seekMs)
                     scheduleProgressSyncAfterSeek()
                     publishPartyPlayback(positionMs = seekMs)
                     skipIntervalDismissed = true

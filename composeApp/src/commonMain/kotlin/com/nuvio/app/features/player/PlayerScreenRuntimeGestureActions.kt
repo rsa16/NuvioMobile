@@ -155,6 +155,11 @@ internal fun PlayerScreenRuntime.showVolumeFeedback(level: PlayerAudioLevel) {
 }
 
 internal fun PlayerScreenRuntime.togglePlayback() {
+    if (isCastCasting) {
+        dispatchCastPlayPause(playing = !playbackSnapshot.isPlaying || playbackSnapshot.isEnded)
+        controlsVisible = true
+        return
+    }
     if (isPartyControlLocked) {
         toggleOwnPlayback()
         return
@@ -175,6 +180,10 @@ internal fun PlayerScreenRuntime.togglePlayback() {
 
 /** Sets the requested state; system controls may send pause, skip and play in a row. */
 internal fun PlayerScreenRuntime.setPlaybackPlaying(playing: Boolean) {
+    if (isCastCasting) {
+        dispatchCastPlayPause(playing)
+        return
+    }
     if (playing == shouldPlay) return
     if (isPartyControlLocked) {
         toggleOwnPlayback()
@@ -202,7 +211,10 @@ internal fun PlayerScreenRuntime.seekBy(offsetMs: Long) {
     val targetMs = if (isPartyControlLocked) ownSeekTarget(requestedMs) ?: return else requestedMs
     lastManualSkipSeekPositions = fromMs to targetMs
     pendingSeekTarget = targetMs to TimeSource.Monotonic.markNow()
-    if (isPartySynced) playerController?.seekTo(targetMs) else playerController?.seekBy(offsetMs)
+    when {
+        isCastCasting || isPartySynced -> playbackCommandSink.seekTo(targetMs)
+        else -> playbackCommandSink.seekBy(offsetMs)
+    }
     scheduleProgressSyncAfterSeek()
     publishPartyPlayback(positionMs = targetMs)
     controlsVisible = true
@@ -237,7 +249,7 @@ internal fun PlayerScreenRuntime.handleDoubleTapSeek(direction: PlayerSeekDirect
     val targetPositionMs = if (isPartyControlLocked) ownSeekTarget(requestedPositionMs) ?: return else requestedPositionMs
     accumulatedSeekState = nextState
     lastManualSkipSeekPositions = currentPositionMs to targetPositionMs
-    playerController?.seekTo(targetPositionMs)
+    playbackCommandSink.seekTo(targetPositionMs)
     scheduleProgressSyncAfterSeek()
     publishPartyPlayback(positionMs = targetPositionMs)
     showSeekFeedback(direction, nextState.amountMs)
@@ -360,7 +372,7 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
                 requestedPositionMs
             }
             lastManualSkipSeekPositions = playbackSnapshot.positionMs to targetPositionMs
-            playerController?.seekTo(targetPositionMs)
+            playbackCommandSink.seekTo(targetPositionMs)
             scheduleProgressSyncAfterSeek()
             publishPartyPlayback(positionMs = targetPositionMs)
         },
@@ -368,3 +380,8 @@ internal fun PlayerScreenRuntime.rememberSurfaceGestureCallbacks(): PlayerSurfac
 }
 
 private val PendingSeekWindow = 1_500.milliseconds
+
+private fun PlayerScreenRuntime.dispatchCastPlayPause(playing: Boolean) {
+    if (playing && playbackSnapshot.isEnded) playbackCommandSink.seekTo(0L)
+    if (playing) playbackCommandSink.play() else playbackCommandSink.pause()
+}
