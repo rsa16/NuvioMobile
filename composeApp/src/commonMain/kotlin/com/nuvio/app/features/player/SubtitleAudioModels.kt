@@ -32,6 +32,7 @@ data class AddonSubtitle(
     val display: String,
     val addonName: String? = null,
     val isSelected: Boolean = false,
+    val headers: Map<String, String> = emptyMap(),
 )
 
 const val SUBTITLE_DELAY_MIN_MS = -60_000

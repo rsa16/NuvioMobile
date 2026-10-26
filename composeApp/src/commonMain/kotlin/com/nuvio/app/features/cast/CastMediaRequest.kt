@@ -7,8 +7,12 @@ internal data class CastMediaRequest(
     val subtitle: String? = null,
     val artworkUrl: String? = null,
     val startPositionMs: Long = 0L,
+    val subtitleSources: List<CastSubtitleSource> = emptyList(),
+    val activeSubtitleTrackId: Long? = null,
+    val subtitleDelayMs: Int = 0,
 )
 
+// request factory
 internal fun buildCastMediaRequest(
     url: String,
     streamType: String?,
@@ -18,6 +22,9 @@ internal fun buildCastMediaRequest(
     episodeTitle: String?,
     artworkUrl: String?,
     startPositionMs: Long,
+    subtitleSources: List<CastSubtitleSource> = emptyList(),
+    activeSubtitleTrackId: Long? = null,
+    subtitleDelayMs: Int = 0,
 ): CastMediaRequest = CastMediaRequest(
     url = url,
     mimeType = castMediaMimeType(url, streamType),
@@ -25,6 +32,11 @@ internal fun buildCastMediaRequest(
     subtitle = castEpisodeLabel(seasonNumber, episodeNumber, episodeTitle),
     artworkUrl = artworkUrl?.trim()?.takeIf { it.isNotEmpty() },
     startPositionMs = startPositionMs.coerceAtLeast(0L),
+    subtitleSources = subtitleSources,
+    activeSubtitleTrackId = activeSubtitleTrackId?.takeIf { id ->
+        subtitleSources.any { it.trackId == id }
+    },
+    subtitleDelayMs = subtitleDelayMs,
 )
 
 // TBD: later maybe think about customizing this format?

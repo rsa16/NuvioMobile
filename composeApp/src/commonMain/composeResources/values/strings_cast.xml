@@ -11,4 +11,6 @@
     <string name="player_cast_reason_loopback">local network addresses can't be cast</string>
     <string name="player_cast_error_failed">This stream couldn't play on your TV…</string>
     <string name="player_cast_session_ended">Disconnected from your TV. Playback continues on this device.</string>
+    <string name="player_cast_subtitle_unsupported">ASS and SSA subtitles can't play on your TV</string>
+    <string name="player_cast_subtitle_unavailable">This subtitle isn't available on your TV</string>
 </resources>

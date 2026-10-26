@@ -438,6 +438,8 @@ private class HandoffCastController(
         commands += "seekBy:$offsetMs"
     }
 
+    override fun setActiveSubtitleTrack(trackId: Long?) = Unit
+
     override fun endSession() {
         endedSessions += 1
         end()

@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +78,7 @@ fun SubtitleModal(
     subtitleAutoSyncState: SubtitleAutoSyncUiState,
     onBuiltInTrackSelected: (Int) -> Unit,
     onAddonSubtitleSelected: (AddonSubtitle) -> Unit,
+    addonSubtitleDisabledReason: (AddonSubtitle) -> String?,
     onFetchAddonSubtitles: () -> Unit,
     onStyleChanged: (SubtitleStyleState) -> Unit,
     onSubtitleDelayChanged: (Int) -> Unit,
@@ -266,6 +268,8 @@ fun SubtitleModal(
                                         SubtitleOptionRow(
                                             option = option,
                                             selected = option.id == selectedOptionId,
+                                            disabledReason = (option as? SubtitleSelectionOption.Addon)
+                                                ?.let { addonSubtitleDisabledReason(it.subtitle) },
                                             onClick = {
                                                 pendingOptionId = option.id
                                                 when (option) {
@@ -398,6 +402,7 @@ private fun SubtitleLanguageRow(
 private fun SubtitleOptionRow(
     option: SubtitleSelectionOption,
     selected: Boolean,
+    disabledReason: String?,
     onClick: () -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -427,12 +432,20 @@ private fun SubtitleOptionRow(
         }
     }
 
+    val enabled = disabledReason == null
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) tokens.colors.accent else Color.Transparent)
-            .clickableIncludingFlingStop(onClick = onClick)
+            .background(if (selected && enabled) tokens.colors.accent else Color.Transparent)
+            .alpha(if (enabled) 1f else 0.55f)
+            .then(
+                if (enabled) {
+                    Modifier.clickableIncludingFlingStop(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
             .padding(horizontal = 12.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -457,10 +470,10 @@ private fun SubtitleOptionRow(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            metadata?.let {
+            (disabledReason ?: metadata)?.let {
                 Text(
                     text = it,
-                    color = if (selected) tokens.colors.onAccent.copy(alpha = 0.72f) else tokens.colors.textMuted,
+                    color = if (selected && enabled) tokens.colors.onAccent.copy(alpha = 0.72f) else tokens.colors.textMuted,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

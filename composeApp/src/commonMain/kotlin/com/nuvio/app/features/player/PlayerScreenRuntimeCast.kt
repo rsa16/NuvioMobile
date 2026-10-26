@@ -10,8 +10,10 @@ import com.nuvio.app.features.cast.CastRemoteSnapshot
 import com.nuvio.app.features.cast.CastSessionState
 import com.nuvio.app.features.cast.CastSource
 import com.nuvio.app.features.cast.CastSourceEligibility
+import com.nuvio.app.features.cast.CastSubtitleSource
 import com.nuvio.app.features.cast.buildCastMediaRequest
 import com.nuvio.app.features.cast.castSourceEligibility
+import com.nuvio.app.features.cast.isCastSubtitleSupported
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
@@ -87,6 +89,7 @@ internal fun PlayerScreenRuntime.beginCastHandoff() {
     castWasPlayingBeforeHandoff = playbackSnapshot.isPlaying
     hasCastPlaybackStarted = false
     castRemoteSnapshot = null
+    prepareCastSubtitles()
     isCastCasting = true
 
     shouldPlay = false
@@ -169,12 +172,52 @@ private fun PlayerScreenRuntime.reloadCastForActiveSource() {
     castWasPlayingBeforeHandoff = playbackSnapshot.isPlaying
     hasCastPlaybackStarted = false
     castRemoteSnapshot = null
+    prepareCastSubtitles()
     shouldPlay = false
 
     playerController?.pause()
     castController.pause()
     castController.load(buildCurrentCastMediaRequest(startPositionMs))
     startCastPlaybackTimeout()
+}
+
+// map sidecars and cast track IDs together
+private fun PlayerScreenRuntime.prepareCastSubtitles() {
+    val sources = visibleAddonSubtitles
+        .filterNot { subtitle ->
+            subtitle.url.isLocalSubtitleUri() || !isCastSubtitleSupported(subtitle.url)
+        }
+        .distinctBy { it.url }
+        .mapIndexed { index, subtitle ->
+            CastSubtitleSource(
+                trackId = index.toLong() + 1L,
+                url = subtitle.url,
+                language = subtitle.language,
+                label = subtitle.display,
+                headers = subtitle.headers,
+            )
+        }
+    castSubtitleSources = sources
+    castActiveSubtitleTrackId = selectedAddonSubtitle
+        ?.let { selected -> sources.firstOrNull { it.url == selected.url } }
+        ?.trackId
+}
+
+internal fun PlayerScreenRuntime.selectCastSubtitle(subtitle: AddonSubtitle) {
+    if (!isCastCasting) return
+    val source = castSubtitleSources.firstOrNull { it.url == subtitle.url }
+    if (source == null) {
+        castMessageRes = Res.string.player_cast_subtitle_unavailable
+        return
+    }
+    castActiveSubtitleTrackId = source.trackId
+    castController.setActiveSubtitleTrack(source.trackId)
+}
+
+internal fun PlayerScreenRuntime.clearCastSubtitle() {
+    if (!isCastCasting) return
+    castActiveSubtitleTrackId = null
+    castController.setActiveSubtitleTrack(null)
 }
 
 private fun PlayerScreenRuntime.startCastPlaybackTimeout() {
@@ -196,6 +239,8 @@ private fun PlayerScreenRuntime.restoreLocalPlayback(positionMs: Long, wasPlayin
     hasCastPlaybackStarted = false
     isCastCasting = false
     castRemoteSnapshot = null
+    castSubtitleSources = emptyList()
+    castActiveSubtitleTrackId = null
     isScrubbingTimeline = false
     scrubbingPositionMs = null
     playbackSnapshot = playbackSnapshot.copy(
@@ -234,6 +279,9 @@ private fun PlayerScreenRuntime.buildCurrentCastMediaRequest(startPositionMs: Lo
         episodeTitle = activeEpisodeTitle,
         artworkUrl = poster ?: background,
         startPositionMs = startPositionMs,
+        subtitleSources = castSubtitleSources,
+        activeSubtitleTrackId = castActiveSubtitleTrackId,
+        subtitleDelayMs = subtitleDelayMs,
     )
 
 private fun PlayerScreenRuntime.showCastIneligibility(reason: CastIneligibilityReason) {

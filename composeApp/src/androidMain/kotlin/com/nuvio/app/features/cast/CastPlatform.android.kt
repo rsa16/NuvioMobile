@@ -10,6 +10,7 @@ import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
 import com.google.android.gms.cast.MediaStatus
+import com.google.android.gms.cast.MediaTrack
 import com.google.android.gms.cast.CastMediaControlIntent
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastOptions
@@ -22,6 +23,16 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.images.WebImage
+import com.nuvio.app.features.addons.httpGetTextWithHeaders
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
 
 /**
@@ -87,6 +98,14 @@ private class AndroidCastController(
     private var remoteMediaClient: RemoteMediaClient? = null
     private var remoteClientCallback: RemoteMediaClient.Callback? = null
     private var loadFailed = false
+
+    private val subtitleScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var subtitlePrepareJob: Job? = null
+    private var subtitleServer: CastSubtitleServer? = null
+    private var loadedSubtitleTrackIds: Set<Long> = emptySet()
+    private var desiredActiveSubtitleTrackId: Long? = null
+    private var loadedMediaContentId: String? = null
+    private var pendingActiveTrackApply = false
 
     private val listener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) {
@@ -161,6 +180,69 @@ private class AndroidCastController(
     override fun load(request: CastMediaRequest) {
         val client = remoteMediaClient ?: return
         loadFailed = false
+        subtitlePrepareJob?.cancel()
+        subtitlePrepareJob = null
+        stopSubtitleServer()
+        desiredActiveSubtitleTrackId = request.activeSubtitleTrackId
+        loadedMediaContentId = request.url
+        pendingActiveTrackApply = true
+
+        if (request.subtitleSources.isEmpty()) {
+            loadMedia(client, request, tracks = emptyList())
+            return
+        }
+
+        subtitlePrepareJob = subtitleScope.launch {
+            // subtitles are fetched and normalized to webvtt
+            // then server is setup to serve them
+            val prepared = prepareSubtitleServer(request)
+            var adopted = false
+            try {
+                withContext(Dispatchers.Main) {
+                    if (remoteMediaClient !== client) return@withContext
+                    if (prepared == null) {
+                        loadMedia(client, request, tracks = emptyList())
+                        return@withContext
+                    }
+                    subtitleServer = prepared.server
+                    adopted = true
+                    loadedSubtitleTrackIds = prepared.sources.map { it.trackId }.toSet()
+                    loadMedia(
+                        client = client,
+                        request = request,
+                        tracks = prepared.sources.map { source ->
+                            MediaTrack.Builder(source.trackId, MediaTrack.TYPE_TEXT)
+                                .setContentId(prepared.server.urlFor(source.trackId))
+                                .setContentType(CAST_SUBTITLE_CONTENT_TYPE)
+                                .setName(source.label)
+                                .setLanguage(source.language)
+                                .setSubtype(MediaTrack.SUBTYPE_SUBTITLES)
+                                .build()
+                        },
+                    )
+                }
+            } finally {
+                if (!adopted) prepared?.server?.stop()
+            }
+        }
+    }
+
+    override fun setActiveSubtitleTrack(trackId: Long?) {
+        desiredActiveSubtitleTrackId = trackId
+        val client = remoteMediaClient ?: return
+        val status = client.mediaStatus
+        if (status != null && status.mediaInfo?.contentId == loadedMediaContentId) {
+            applyActiveSubtitleTrack(client)
+        } else {
+            pendingActiveTrackApply = true
+        }
+    }
+
+    private fun loadMedia(
+        client: RemoteMediaClient,
+        request: CastMediaRequest,
+        tracks: List<MediaTrack>,
+    ) {
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, request.title)
             request.subtitle?.let { putString(MediaMetadata.KEY_SUBTITLE, it) }
@@ -170,6 +252,9 @@ private class AndroidCastController(
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
             .setContentType(request.mimeType)
             .setMetadata(metadata)
+            .apply {
+                if (tracks.isNotEmpty()) setMediaTracks(tracks)
+            }
             .build()
         runCastCommand("load") {
             client.load(
@@ -180,6 +265,44 @@ private class AndroidCastController(
                     .build(),
             )
         }
+    }
+
+    private suspend fun prepareSubtitleServer(request: CastMediaRequest): PreparedCastSubtitles? {
+        val bodies = LinkedHashMap<Long, ByteArray>()
+        for (source in request.subtitleSources) {
+            val body = runCatching {
+                httpGetTextWithHeaders(source.url, source.headers)
+            }.getOrNull() ?: continue
+            currentCoroutineContext().ensureActive()
+            val vtt = subtitleTextToWebVtt(body, request.subtitleDelayMs) ?: continue
+            bodies[source.trackId] = vtt.toByteArray(Charsets.UTF_8)
+        }
+        if (bodies.isEmpty()) return null
+        val server = runCatching {
+            CastSubtitleServer(tracks = bodies).also { it.start() }
+        }.getOrNull() ?: return null
+        return PreparedCastSubtitles(
+            server = server,
+            sources = request.subtitleSources.filter { bodies.containsKey(it.trackId) },
+        )
+    }
+
+    private fun applyActiveSubtitleTrack(client: RemoteMediaClient) {
+        pendingActiveTrackApply = false
+        val activeId = desiredActiveSubtitleTrackId
+            ?.takeIf { loadedSubtitleTrackIds.contains(it) }
+        runCastCommand("active-tracks") {
+            client.setActiveMediaTracks(activeId?.let { longArrayOf(it) } ?: longArrayOf())
+        }
+    }
+
+    private fun stopSubtitleServer() {
+        subtitlePrepareJob?.cancel()
+        subtitlePrepareJob = null
+        subtitleServer?.stop()
+        subtitleServer = null
+        loadedSubtitleTrackIds = emptySet()
+        pendingActiveTrackApply = false
     }
 
     override fun play() {
@@ -216,6 +339,8 @@ private class AndroidCastController(
         if (shouldEndSession) {
             runCatching { sessionManager.endCurrentSession(true) }
         }
+        stopSubtitleServer()
+        subtitleScope.cancel()
         sessionState = CastSessionState.Disconnected
         onSessionStateChanged = null
         onRemoteSnapshotChanged = null
@@ -249,6 +374,12 @@ private class AndroidCastController(
     private fun publishRemoteStatus() {
         val client = remoteMediaClient ?: return
         val status = client.mediaStatus ?: return
+        if (
+            pendingActiveTrackApply &&
+            status.mediaInfo?.contentId == loadedMediaContentId
+        ) {
+            applyActiveSubtitleTrack(client)
+        }
         val playerState = status.playerState
         if (
             playerState == MediaStatus.PLAYER_STATE_IDLE &&
@@ -277,6 +408,11 @@ private class AndroidCastController(
     }
 
     private fun publish(state: CastSessionState) {
+        if (state == CastSessionState.Disconnected) {
+            desiredActiveSubtitleTrackId = null
+            loadedMediaContentId = null
+            stopSubtitleServer()
+        }
         sessionState = state
         onSessionStateChanged?.invoke(state)
     }

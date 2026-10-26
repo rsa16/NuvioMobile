@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioStatusModal
+import com.nuvio.app.features.cast.isCastSubtitleSupported
 import com.nuvio.app.features.p2p.P2pStreamingState
 import com.nuvio.app.features.party.PartyRepository
 import com.nuvio.app.features.p2p.formatP2pMegabytes
@@ -511,6 +512,7 @@ private fun BoxScope.RenderPlaybackOverlays(
 
 @Composable
 private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
+    val castSubtitleUnsupportedLabel = stringResource(Res.string.player_cast_subtitle_unsupported)
     PlayerScreenModalHosts(
         pendingP2pSwitch = pendingP2pSwitch,
         onPendingP2pSwitchChanged = { pendingP2pSwitch = it },
@@ -539,8 +541,14 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         },
         onAudioModalDismissed = { showAudioModal = false },
         showSubtitleModal = showSubtitleModal,
-        subtitleTracks = serverSubtitleTracks.ifEmpty { subtitleTracks },
-        selectedSubtitleIndex = if (serverSubtitleTracks.isEmpty()) {
+        subtitleTracks = if (isCastCasting) {
+            emptyList()
+        } else {
+            serverSubtitleTracks.ifEmpty { subtitleTracks }
+        },
+        selectedSubtitleIndex = if (isCastCasting) {
+            -1
+        } else if (serverSubtitleTracks.isEmpty()) {
             selectedSubtitleIndex
         } else {
             serverSubtitleTracks.firstOrNull { it.isSelected }?.index ?: -1
@@ -553,6 +561,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         selectedAddonSubtitle = selectedAddonSubtitle,
         subtitleAutoSyncState = subtitleAutoSyncState,
         onBuiltInSubtitleTrackSelected = { index ->
+            if (isCastCasting) clearCastSubtitle()
             if (serverSubtitleTracks.isNotEmpty() && index >= 0) {
                 selectServerSubtitleTrack(index)
             } else {
@@ -572,6 +581,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
             }
         },
         onAddonSubtitleSelected = { addon ->
+            if (isCastCasting) selectCastSubtitle(addon)
             isUserExplicitSubtitleSelection = true
             selectedAddonSubtitleId = addon.selectionKey
             selectedSubtitleIndex = -1
@@ -580,6 +590,13 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
             persistAddonSubtitlePreference(addon)
             attachSelectedAddonSubtitleWithAutoSync(addon.url) // AutoSync hook
             if (hasBurnedInServerSubtitle) clearServerSubtitleTrack()
+        },
+        addonSubtitleDisabledReason = { addon ->
+            if (isCastCasting && !isCastSubtitleSupported(addon.url)) {
+                castSubtitleUnsupportedLabel
+            } else {
+                null
+            }
         },
         onFetchAddonSubtitles = { fetchAddonSubtitlesForActiveItem() },
         onSubtitleStyleChanged = PlayerSettingsRepository::setSubtitleStyle,

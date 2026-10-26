@@ -30,6 +30,7 @@ internal interface CastController {
     fun pause()
     fun seekTo(positionMs: Long)
     fun seekBy(offsetMs: Long)
+    fun setActiveSubtitleTrack(trackId: Long?)
     fun endSession()
     fun close()
 }
@@ -46,6 +47,7 @@ internal class UnavailableCastController : CastController {
     override fun pause() = Unit
     override fun seekTo(positionMs: Long) = Unit
     override fun seekBy(offsetMs: Long) = Unit
+    override fun setActiveSubtitleTrack(trackId: Long?) = Unit
     override fun endSession() = Unit
     override fun close() = Unit
 }

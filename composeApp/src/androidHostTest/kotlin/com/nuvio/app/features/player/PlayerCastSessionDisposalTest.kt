@@ -98,6 +98,8 @@ private class RecordingCastController : CastController {
 
     override fun seekBy(offsetMs: Long) = Unit
 
+    override fun setActiveSubtitleTrack(trackId: Long?) = Unit
+
     override fun endSession() {
         sessionState = CastSessionState.Disconnected
         onSessionStateChanged?.invoke(sessionState)

@@ -11,6 +11,7 @@ import com.nuvio.app.features.addons.AddonsUiState
 import com.nuvio.app.features.cast.CastController
 import com.nuvio.app.features.cast.CastRemoteSnapshot
 import com.nuvio.app.features.cast.CastSessionState
+import com.nuvio.app.features.cast.CastSubtitleSource
 import com.nuvio.app.features.cast.createCastController
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaDetailsUiState
@@ -94,6 +95,8 @@ internal class PlayerScreenRuntime(
     var castWasPlayingBeforeHandoff by mutableStateOf(false)
     var hasCastPlaybackStarted by mutableStateOf(false)
     var castLoadTimeoutJob by mutableStateOf<Job?>(null)
+    var castSubtitleSources by mutableStateOf<List<CastSubtitleSource>>(emptyList())
+    var castActiveSubtitleTrackId by mutableStateOf<Long?>(null)
 
     val localPlaybackCommandSink: PlaybackCommandSink by lazy {
         LocalPlaybackCommandSink { playerController }
